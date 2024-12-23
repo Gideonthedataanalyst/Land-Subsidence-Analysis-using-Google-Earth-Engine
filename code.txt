@@ -1,0 +1,63 @@
+// Land Subsidence Analysis Using Global Land Subsidence Dataset in Google Earth Engine
+
+// 1. Define a single point within the study area (Nairobi, Kenya)
+var subsidencePoint = [36.82, -1.28]; // Coordinates for Nairobi
+var pointGeometry = ee.Geometry.Point(subsidencePoint); // Create a point geometry
+
+// 2. Load global subsidence probability dataset
+var subsidenceProbability = ee.Image("projects/sat-io/open-datasets/global_subsidence/Final_subsidence_proba_greater_1cm_2013_2019_recoded");
+
+// 3. Add the global probability dataset to the map
+Map.addLayer(subsidenceProbability, 
+  {palette: ['white', 'yellow', 'orange', 'red', 'brown', 'black']}, 
+  'Global Subsidence Probability', 
+  false);
+
+// 4. Load WWF HydroSHEDS basin boundaries and filter by the region of interest (ROI)
+var Hydrobasin = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_5");
+Map.addLayer(Hydrobasin, {}, 'Hydroshed Basin');
+
+var basinBoundaries = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_5")
+  .filterBounds(pointGeometry) // Select basins intersecting the defined point
+  .map(function(basin) {
+    return basin.simplify(1000); // Simplify geometry to reduce complexity
+  });
+
+// Add basin boundaries to the map
+Map.centerObject(basinBoundaries); // Center the map on the ROI
+Map.addLayer(basinBoundaries, {}, 'Basin Boundaries');
+
+// 5. Clip the subsidence probability dataset to the ROI
+var clippedSubsidenceProbability = subsidenceProbability.clip(basinBoundaries);
+Map.addLayer(clippedSubsidenceProbability, 
+  {palette: ['white', 'yellow', 'orange', 'red', 'brown', 'black']}, 
+  'Clipped Subsidence Probability', 
+  false);
+
+// 6. Load global land subsidence classification dataset
+var subsidenceClassification = ee.Image("projects/sat-io/open-datasets/global_subsidence/Final_subsidence_prediction_recoded");
+print(subsidenceClassification);
+
+// Add the global classification dataset to the map with a mask to highlight classes
+Map.addLayer(subsidenceClassification.updateMask(subsidenceClassification.neq(1)), 
+  {palette: ['white', 'yellow', 'orange', 'red', 'brown', 'black']}, 
+  'Global Subsidence Classification', 
+  false);
+
+// 7. Clip the subsidence classification dataset to the ROI
+var clippedSubsidenceClassification = subsidenceClassification.clip(basinBoundaries);
+Map.addLayer(clippedSubsidenceClassification, 
+  {palette: ['white', 'yellow', 'orange', 'red', 'brown', 'black']}, 
+  'Clipped Subsidence Classification', 
+  false);
+
+// 8. Export the clipped subsidence classification dataset to Google Drive
+Export.image.toDrive({
+  image: clippedSubsidenceClassification, // Export clipped classification dataset
+  description: 'Land_Subsidence_Classification_Nairobi', // Name of the exported file
+  scale: 100, // Pixel resolution (meters)
+  region: basinBoundaries.geometry(), // Area of export
+  maxPixels: 1e13, // Maximum number of pixels to export
+  crs: 'EPSG:4326', // Coordinate Reference System
+  folder: 'Land_Subsidence_Analysis' // Google Drive folder
+});
